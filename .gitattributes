@@ -1,0 +1,40 @@
+# Auto-detect text files and perform LF normalization
+* text=auto
+
+# Handle line endings for specific file types
+# Ensure shell scripts always use LF (important for Docker/Unix)
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Explicitly mark text files
+*.go text
+*.md text
+*.cql text
+*.yml text
+*.yaml text
+*.json text
+*.drawio text
+*.Dockerfile text
+Dockerfile* text
+.env* text
+
+# Explicitly mark binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.exe binary
+*.zip binary
+*.tar* binary
+
+# GitHub Linguist overrides
+# Exclude vendor directories if they exist (not present here but for future-proofing)
+vendor/** linguist-vendored
+# Mark specific files as documentation
+*.md linguist-documentation
+LICENSE linguist-documentation
+CONTRIBUTING.md linguist-documentation
+SETUP.md linguist-documentation
+INTERVIEW.md linguist-documentation

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Live Tracker — WebSocket Demo</title>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 2rem; }
+        .card { background: #1e293b; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.3); width: 100%; max-width: 500px; }
+        h1 { margin-top: 0; color: #38bdf8; font-size: 1.5rem; text-align: center; }
+        .input-group { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+        input { flex: 1; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #334155; background: #0f172a; color: white; font-family: monospace; }
+        button { padding: 0.75rem 1.5rem; border-radius: 0.5rem; border: none; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #7dd3fc; }
+        #status { text-align: center; margin-bottom: 1rem; font-size: 0.875rem; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .data-display { background: #0f172a; padding: 1rem; border-radius: 0.5rem; border: 1px solid #334155; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.5rem; }
+        .row:last-child { border: none; margin-bottom: 0; padding-bottom: 0; }
+        .label { color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .value { font-family: monospace; font-size: 1.125rem; }
+        .logs { margin-top: 1.5rem; font-size: 0.75rem; color: #64748b; height: 100px; overflow-y: auto; background: #0f172a; padding: 0.5rem; border-radius: 0.5rem; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>GPS Live Tracker</h1>
+        
+        <div id="status">Disconnected</div>
+
+        <div class="input-group">
+            <input type="text" id="driverId" placeholder="Enter Driver UUID" value="550e8400-e29b-41d4-a716-446655440001">
+            <button id="connectBtn">Connect</button>
+        </div>
+
+        <div class="data-display">
+            <div class="row">
+                <span class="label">Latitude</span>
+                <span id="lat" class="value">0.000000</span>
+            </div>
+            <div class="row">
+                <span class="label">Longitude</span>
+                <span id="lng" class="value">0.000000</span>
+            </div>
+            <div class="row">
+                <span class="label">Speed</span>
+                <span id="speed" class="value">0.0 km/h</span>
+            </div>
+            <div class="row">
+                <span class="label">Last Updated</span>
+                <span id="time" class="value">--:--:--</span>
+            </div>
+        </div>
+
+        <div class="logs" id="logs">
+            Waiting to connect...
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        const driverIdInput = document.getElementById('driverId');
+        const connectBtn = document.getElementById('connectBtn');
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('logs');
+
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML = `[${time}] ${msg}<br>` + logEl.innerHTML;
+        }
+
+        connectBtn.onclick = () => {
+            if (socket) {
+                socket.close();
+            }
+
+            const driverId = driverIdInput.value.trim();
+            if (!driverId) return alert('Enter a driver ID');
+
+            const url = `ws://localhost:8080/ws/driver/${driverId}`;
+            log(`Connecting to ${url}...`);
+            
+            socket = new WebSocket(url);
+
+            socket.onopen = () => {
+                statusEl.innerText = 'Connected';
+                statusEl.className = 'success';
+                connectBtn.innerText = 'Reconnect';
+                log('Connection established.');
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                document.getElementById('lat').innerText = data.lat.toFixed(6);
+                document.getElementById('lng').innerText = data.lng.toFixed(6);
+                document.getElementById('speed').innerText = data.speed.toFixed(1) + ' km/h';
+                document.getElementById('time').innerText = new Date(data.recorded_at).toLocaleTimeString();
+                log(`Received update: lat=${data.lat.toFixed(4)} lng=${data.lng.toFixed(4)}`);
+            };
+
+            socket.onclose = () => {
+                statusEl.innerText = 'Disconnected';
+                statusEl.className = 'error';
+                log('Connection closed.');
+            };
+
+            socket.onerror = (err) => {
+                log('WebSocket Error observed.');
+                console.error(err);
+            };
+        };
+    </script>
+</body>
+</html>

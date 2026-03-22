@@ -1,0 +1,156 @@
+{
+  "title": "Location Tracker",
+  "uid": "location-tracker",
+  "timezone": "browser",
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Events Processed / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "rate(consumer_events_processed_total[1m])",
+        "legendFormat": "events/sec"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "green" } }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Events Failed / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "rate(consumer_events_failed_total[1m])",
+        "legendFormat": "failures/sec"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "red" } }
+      }
+    },
+    {
+      "id": 3,
+      "title": "DLQ Events / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "rate(consumer_dlq_sent_total[1m])",
+        "legendFormat": "dlq/sec"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "orange" } }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Cassandra Insert Duration (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(consumer_cassandra_insert_duration_seconds_bucket[1m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(consumer_cassandra_insert_duration_seconds_bucket[1m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(consumer_cassandra_insert_duration_seconds_bucket[1m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 5,
+      "title": "Consumer Processing Lag (p95)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, rate(consumer_processing_lag_seconds_bucket[1m]))",
+        "legendFormat": "p95 lag"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "thresholds": {
+          "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 2 },
+            { "color": "red", "value": 10 }
+          ]
+        }}
+      }
+    },
+    {
+      "id": 6,
+      "title": "Kafka Publishes / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(producer_kafka_publish_total[1m])",
+          "legendFormat": "published/sec"
+        },
+        {
+          "expr": "rate(producer_kafka_publish_errors_total[1m])",
+          "legendFormat": "errors/sec"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 7,
+      "title": "HTTP Request Duration p99 (producer)",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "histogram_quantile(0.99, rate(producer_http_request_duration_seconds_bucket{path=\"/location\"}[1m]))",
+        "legendFormat": "POST /location p99"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 8,
+      "title": "Active WebSocket Connections",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "producer_websocket_connections_active",
+        "legendFormat": "active"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Active Drivers Seen",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 24, "w": 8, "h": 6 },
+      "targets": [{
+        "expr": "consumer_active_drivers_total",
+        "legendFormat": "drivers"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "purple" } }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Cassandra Retries / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 24, "w": 16, "h": 6 },
+      "targets": [{
+        "expr": "rate(consumer_cassandra_retries_total[1m])",
+        "legendFormat": "retries/sec"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "yellow" } }
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}

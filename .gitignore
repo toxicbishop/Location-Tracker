@@ -1,0 +1,51 @@
+# IDE and System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Environment and Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Go
+# Binary files (Windows/Unix)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+# Main project binaries (hardcoded)
+consumer
+producer
+dlq-inspect
+
+# Dependency directories (only if vendor is not desired)
+# vendor/
+
+# Build artifacts
+# obj/
+# bin/
+
+# Docker
+# Don't ignore docker-compose.yml, but can ignore specific overrides
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# Temporary files & Extra Data
+temp_extracted/
+# monitoring data if any local volume mounts are ignored
+# data/
+
+# Infrastructure Specifics
+# Ignore any local data folders mounted by Docker volumes if they are named 'data'
+# e.g. ./data/cassandra, ./data/redis
+data/
