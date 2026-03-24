@@ -145,12 +145,15 @@ make mock-data
 
 ### Environment Variables
 
-| Variable         | Default          | Description                  |
-| ---------------- | ---------------- | ---------------------------- |
-| `KAFKA_BROKER`   | `localhost:9092` | Kafka broker address         |
-| `CASSANDRA_HOST` | `localhost`      | Cassandra host               |
-| `REDIS_ADDR`     | `localhost:6379` | Redis address                |
-| `LISTEN_ADDR`    | `:8080`          | Producer HTTP listen address |
+See [.env.example](.env.example) for full configuration.
+
+| Variable | Default | Description |
+|---|---|---|
+| `JWT_SECRET` | `default-secret`| Signing key for JWT auth |
+| `API_KEY` | `test-api-key` | Static key for integration testing |
+| `LOG_LEVEL` | `info` | Structured logging verbosity |
+| `REDIS_TLS_ENABLE` | `false`| Enable TLS for Redis connections |
+
 
 ---
 
