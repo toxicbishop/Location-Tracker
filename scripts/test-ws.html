@@ -31,9 +31,14 @@
         <div id="status">Disconnected</div>
 
         <div class="input-group">
-            <input type="text" id="driverId" placeholder="Enter Driver UUID" value="550e8400-e29b-41d4-a716-446655440001">
+            <input type="text" id="apiKey" placeholder="API Key" value="test-api-key">
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="driverId" placeholder="Enter Driver ID" value="driver-1">
             <button id="connectBtn">Connect</button>
         </div>
+
 
         <div class="data-display">
             <div class="row">
@@ -62,6 +67,7 @@
     <script>
         let socket;
         const driverIdInput = document.getElementById('driverId');
+        const apiKeyInput = document.getElementById('apiKey');
         const connectBtn = document.getElementById('connectBtn');
         const statusEl = document.getElementById('status');
         const logEl = document.getElementById('logs');
@@ -77,10 +83,11 @@
             }
 
             const driverId = driverIdInput.value.trim();
+            const apiKey = apiKeyInput.value.trim();
             if (!driverId) return alert('Enter a driver ID');
 
-            const url = `ws://localhost:8080/ws/driver/${driverId}`;
-            log(`Connecting to ${url}...`);
+            const url = `ws://localhost:8080/ws/driver/${driverId}?api_key=${apiKey}`;
+            log(`Connecting to URL with auth...`); // Don't log the key for security if you prefer
             
             socket = new WebSocket(url);
 

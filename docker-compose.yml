@@ -70,6 +70,9 @@ services:
       REDIS_ADDR: redis:6379
       LISTEN_ADDR: :8080
       METRICS_ADDR: :9090
+    env_file:
+      - .env
+
     depends_on:
       kafka:
         condition: service_healthy
@@ -87,6 +90,9 @@ services:
       CASSANDRA_HOST: cassandra
       REDIS_ADDR: redis:6379
       METRICS_ADDR: :9091
+    env_file:
+      - .env
+
     depends_on:
       kafka:
         condition: service_healthy

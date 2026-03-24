@@ -26,29 +26,35 @@ func init() {
 // AuthMiddleware handles both JWT and API Key authentication
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Check API Key first (optional)
+		// 1. Check API Key in header or query param
 		key := r.Header.Get("X-API-KEY")
+		if key == "" {
+			key = r.URL.Query().Get("api_key")
+		}
+
 		if key == apiKey {
 			next(w, r)
 			return
 		}
 
-		// Check JWT
+		// 2. Check JWT in header or query param
+		tokenString := ""
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			log.Warn().Msg("missing authorization header")
+		if authHeader != "" {
+			bearerToken := strings.Split(authHeader, " ")
+			if len(bearerToken) == 2 && strings.ToLower(bearerToken[0]) == "bearer" {
+				tokenString = bearerToken[1]
+			}
+		} else {
+			tokenString = r.URL.Query().Get("token")
+		}
+
+		if tokenString == "" {
+			log.Warn().Msg("missing authentication (header or query param)")
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		bearerToken := strings.Split(authHeader, " ")
-		if len(bearerToken) != 2 || strings.ToLower(bearerToken[0]) != "bearer" {
-			log.Warn().Str("header", authHeader).Msg("invalid authorization header format")
-			http.Error(w, "invalid token format", http.StatusUnauthorized)
-			return
-		}
-
-		tokenString := bearerToken[1]
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
@@ -65,3 +71,4 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r)
 	}
 }
+
