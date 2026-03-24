@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/pranav/location-tracker/db"
+	"github.com/rs/zerolog/log"
 )
 
 var upgrader = websocket.Upgrader{
@@ -16,9 +16,9 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// GET /driver/{id}/ws
+// GET /ws/driver/{id}
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	// Parse driver_id from path
+	// Parse driver_id from path /ws/driver/{id}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 3 {
 		http.Error(w, "driver_id required", http.StatusBadRequest)
@@ -28,7 +28,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("ws upgrade error: %v", err)
+		log.Error().Err(err).Msg("ws upgrade error")
 		return
 	}
 	defer conn.Close()
@@ -39,45 +39,44 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	activeWebSocketConns.Inc()
 	defer activeWebSocketConns.Dec()
 
-	// 1. Initial Position: Send the latest cached location immediately
-	// so the rider doesn't see a blank map while waiting for the next update.
+	log.Info().Str("driver_id", driverID).Msg("WebSocket connected")
+
+	// 1. Initial Position
 	if last, err := db.GetLatestLocation(ctx, rdb, driverID); err == nil && last != nil {
 		if err := conn.WriteJSON(last); err != nil {
-			log.Printf("ws initial write failed: %v", err)
+			log.Warn().Err(err).Msg("ws initial write failed")
 			return
 		}
 	}
 
-	// 2. Subscribe to Redis updates for this driver
+	// 2. Subscribe to Redis updates
 	pubsub := db.SubscribeToDriver(ctx, rdb, driverID)
 	defer pubsub.Close()
 
 	ch := pubsub.Channel()
 
-	// 3. Monitor for disconnects in a separate goroutine
+	// 3. Monitor for disconnects
 	go func() {
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
-				cancel() // kill the subscription loop
+				cancel()
 				return
 			}
 		}
 	}()
 
-	log.Printf("WebSocket connected: driver=%s", driverID)
-
-	// 4. Main Loop: Push updates from Redis to WebSocket
+	// 4. Main Loop
 	for {
 		select {
 		case msg := <-ch:
-			// Redis message payload is the JSON string
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
-				log.Printf("ws write error: %v", err)
+				log.Warn().Err(err).Msg("ws write error")
 				return
 			}
 		case <-ctx.Done():
-			log.Printf("WebSocket disconnected: driver=%s", driverID)
+			log.Info().Str("driver_id", driverID).Msg("WebSocket disconnected")
 			return
 		}
 	}
 }
+

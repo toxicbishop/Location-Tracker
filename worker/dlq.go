@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
 	"github.com/pranav/location-tracker/models"
+	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
 )
+
+
 
 const dlqTopic = "gps.updates.dlq"
 
@@ -54,7 +56,7 @@ func (d *DLQWriter) Send(ctx context.Context, event models.LocationEvent, reason
 
 	payload, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("[DLQ] marshal failed for driver %s: %v — event lost", event.DriverID, err)
+		log.Error().Err(err).Str("driver_id", event.DriverID).Msg("DLQ marshal failed, event lost")
 		return
 	}
 
@@ -63,11 +65,11 @@ func (d *DLQWriter) Send(ctx context.Context, event models.LocationEvent, reason
 		Value: payload,
 	})
 	if err != nil {
-		log.Printf("[DLQ] write failed for driver %s: %v — event lost", event.DriverID, err)
+		log.Error().Err(err).Str("driver_id", event.DriverID).Msg("DLQ write failed, event lost")
 		return
 	}
 
-	log.Printf("[DLQ] queued failed event for driver %s | reason: %s", event.DriverID, reason)
+	log.Info().Str("driver_id", event.DriverID).Str("reason", reason).Msg("Queued failed event to DLQ")
 }
 
 // Close shuts down the DLQ writer.
