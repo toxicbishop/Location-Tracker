@@ -5,13 +5,14 @@ Tracks live driver positions for a ride-sharing application.
 
 ---
 
-## Features
-- **High-Throughput Ingestion**: Powered by Kafka for reliable, asynchronous location event processing.
-- **Time-Series Storage**: Cassandra stores full journey history with automatic 24-hour expiration (TTL).
-- **Fast Lookups**: Redis provides sub-millisecond access to the latest known position of any driver.
-- **Live Streaming**: Real-time position updates pushed to clients via WebSockets and Redis Pub/Sub.
-- **Horizontal Scalability**: Stateless API and consumer workers can scale to handle varying loads.
-- **Docker Integration**: Complete infrastructure and application orchestration with Docker Compose.
+## Recent Enhancements
+
+- **Security & Auth**: Added JWT and API Key validation.
+- **Geospatial Queries**: Proximity search ("find nearby drivers") using Redis GEO.
+- **Observability**: Structured JSON logging (`zerolog`) and Prometheus metrics.
+- **Performance**: Batch ingestion support for high-throughput clients.
+- **Historical Data**: `/history` endpoint for time-series journey tracking from Cassandra.
+- **Resilience**: Integrated Dead Letter Queue (DLQ) support.
 
 ---
 
@@ -23,12 +24,12 @@ The system architecture is designed for high availability and low latency. You c
 
 ### Why this stack?
 
-| Need | Solution | Why not the alternative? |
-|---|---|---|
-| High-throughput GPS ingestion | **Kafka** | REST -> DB directly would bottleneck on write spikes |
-| Full location history | **Cassandra** | Time-series data, append-only, TTL support, scales horizontally |
-| Current position lookup | **Redis** | O(1) in-memory vs Cassandra disk I/O for a 2s polling use case |
-| Live position streaming | **Redis Pub/Sub + WebSocket** | No polling overhead; push-based fan-out to multiple riders |
+| Need                          | Solution                      | Why not the alternative?                                        |
+| ----------------------------- | ----------------------------- | --------------------------------------------------------------- |
+| High-throughput GPS ingestion | **Kafka**                     | REST -> DB directly would bottleneck on write spikes            |
+| Full location history         | **Cassandra**                 | Time-series data, append-only, TTL support, scales horizontally |
+| Current position lookup       | **Redis**                     | O(1) in-memory vs Cassandra disk I/O for a 2s polling use case  |
+| Live position streaming       | **Redis Pub/Sub + WebSocket** | No polling overhead; push-based fan-out to multiple riders      |
 
 ---
 
@@ -36,45 +37,54 @@ The system architecture is designed for high availability and low latency. You c
 
 ```text
 location-tracker/
-|-- assets/                     # High-fidelity architecture diagrams (.drawio, .png, .svg)
-|-- docker-compose.yml          # All 5 services: infra + app
-|-- schema.cql                  # Cassandra keyspace + table
-|-- go.mod
+|-- Makefile                    # Build, test, run, and migrate
+|-- .env.example                # Config template
+|-- migrations.cql              # Cassandra keyspace + tables
+|-- docker-compose.yml          # Infrastructure + Application stack
 |
-|-- models/
-|   |-- location.go             # LocationEvent struct (shared)
-|
-|-- db/
-|   |-- cassandra.go            # Session, InsertLocation, GetRecentLocations
-|   |-- redis.go                # Set/Get latest, Publish, Subscribe
-|
-|-- producer/
-|   |-- main.go                 # HTTP API -> Kafka producer
-|   |-- ws.go                   # WebSocket handler (Redis pub/sub -> rider)
+|-- api/                        # HTTP Producer + WebSocket Service
+|   |-- auth.go                 # JWT & API Key Middlewares
+|   |-- main.go                 # Handlers & Routing
+|   |-- ws.go                   # WebSocket logic
+|   |-- metrics.go              # Prometheus instrumentation
+|   |-- main_test.go            # Validation tests
 |   |-- Dockerfile
 |
-|-- consumer/
-|   |-- main.go                 # Kafka consumer -> Cassandra + Redis
+|-- worker/                     # Kafka Consumer Worker
+|   |-- main.go                 # Processing logic (Kafka -> DBs)
+|   |-- dlq.go                  # Dead Letter Queue handling
 |   |-- Dockerfile
 |
-|-- scripts/
-    |-- simulate.sh             # Fake GPS event generator (3 drivers)
-    |-- benchmark.sh            # Throughput benchmark (parallel curl)
-    |-- test-ws.html            # Browser UI to test WebSocket live tracking
+|-- db/                         # Data Access Layer
+|   |-- cassandra.go            # Cassandra Session & Time-series Queries
+|   |-- redis.go                # Redis Caching & Geospatial Queries
+|   |-- redis_test.go           # Redis unit tests (miniredis)
+|
+|-- models/                     # Shared data structures
+|   |-- location.go             # LocationEvent
+|
+|-- scripts/                    # Tools & Automation
+|   |-- init-cassandra.sh       # Automated schema migration
+|   |-- simulate.sh             # Live GPS event generator
+|   |-- test-ws.html            # WebSocket test UI
 ```
 
 ---
 
 ## API Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/location` | Accept GPS event -> publish to Kafka |
-| `GET` | `/driver/{id}/location` | Latest position from Redis (polling) |
-| `GET` | `/driver/{id}/ws` | WebSocket -- live position stream (push) |
-| `GET` | `/health` | Health check |
+| Method | Path                    | Auth    | Description                          |
+| ------ | ----------------------- | ------- | ------------------------------------ |
+| `POST` | `/location`             | JWT/Key | Ingest single GPS event              |
+| `POST` | `/location/batch`       | JWT/Key | Ingest array of GPS events           |
+| `GET`  | `/driver/{id}/location` | None    | Latest position from Redis           |
+| `GET`  | `/driver/{id}/history`  | None    | Journey history from Cassandra       |
+| `GET`  | `/drivers/nearby`       | None    | Find drivers within X km (Redis GEO) |
+| `GET`  | `/ws/driver/{id}`       | JWT/Key | Live position stream (WebSocket)     |
+| `GET`  | `/health`               | None    | Health check                         |
 
 ### POST /location
+
 ```bash
 curl -X POST http://localhost:8080/location \
   -H "Content-Type: application/json" \
@@ -88,63 +98,59 @@ curl -X POST http://localhost:8080/location \
 ```
 
 ### GET /driver/{id}/location
+
 ```bash
 curl http://localhost:8080/driver/550e8400-e29b-41d4-a716-446655440001/location
 # -> { "driver_id": "...", "lat": 12.9716, "lng": 77.5946, "speed": 45.5, "recorded_at": "..." }
 ```
 
 ### WebSocket /driver/{id}/ws
+
 Open `scripts/test-ws.html` in your browser, paste a driver UUID, click Connect.
 Receives a JSON push for every GPS event from that driver in real time.
 
 ---
 
-## Setup
+## Setup & Running
 
-### Option A -- Full Docker (recommended)
+This project uses a `Makefile` for developer ergonomics.
 
+### 1. Prerequisites
+- Docker & Docker Compose
+- Go 1.23+ (if running locally)
+
+### 2. Quick Start (Full Stack)
 ```bash
-# 1. Start all 5 services
-docker-compose up --build
+# Start all infrastructure and apps
+make docker-up
 
-# 2. Wait ~45s for Cassandra to boot, then apply schema
-docker exec -i $(docker-compose ps -q cassandra) cqlsh < schema.cql
+# Wait ~45s for Cassandra, then run migrations (automatic via script)
+./scripts/init-cassandra.sh
 
-# 3. Run the simulator
+# Run simulator to see data flowing
 ./scripts/simulate.sh
-
-# 4. Open scripts/test-ws.html in your browser to see live updates
 ```
 
-### Option B -- Local development
-
-**Prerequisites:** Go 1.21+, Docker (for infra only)
-
+### 3. Developer Workflow
 ```bash
-# 1. Start only infrastructure
-docker-compose up zookeeper kafka cassandra redis
+# Build binaries
+make build
 
-# 2. Apply Cassandra schema
-docker exec -i <cassandra-container> cqlsh < schema.cql
+# Run unit tests (including API validation and Redis mocks)
+make test
 
-# 3. Terminal 1 -- consumer
-cd consumer && go run main.go
-
-# 4. Terminal 2 -- producer
-cd producer && go run main.go
-
-# 5. Terminal 3 -- simulate GPS events
-./scripts/simulate.sh
+# Send manual test data
+make mock-data
 ```
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `KAFKA_BROKER` | `localhost:9092` | Kafka broker address |
-| `CASSANDRA_HOST` | `localhost` | Cassandra host |
-| `REDIS_ADDR` | `localhost:6379` | Redis address |
-| `LISTEN_ADDR` | `:8080` | Producer HTTP listen address |
+| Variable         | Default          | Description                  |
+| ---------------- | ---------------- | ---------------------------- |
+| `KAFKA_BROKER`   | `localhost:9092` | Kafka broker address         |
+| `CASSANDRA_HOST` | `localhost`      | Cassandra host               |
+| `REDIS_ADDR`     | `localhost:6379` | Redis address                |
+| `LISTEN_ADDR`    | `:8080`          | Producer HTTP listen address |
 
 ---
 
@@ -173,6 +179,7 @@ chmod +x scripts/benchmark.sh
 ```
 
 Sample output:
+
 ```text
 ============================================
   Location Tracker -- Throughput Benchmark
@@ -227,26 +234,28 @@ connect. The rider sees the driver's position right away without waiting for the
 
 ## Concepts Covered
 
-| Concept | Where |
-|---|---|
-| Kafka producer with message keys | `producer/main.go` |
-| Kafka consumer groups + partition assignment | `consumer/main.go` |
-| Horizontal consumer scaling | `docker-compose up --scale consumer=N` |
-| Cassandra time-series schema | `schema.cql` |
-| Cassandra partition + clustering keys | `db/cassandra.go` |
-| TTL-based data expiry | `schema.cql` -- `default_time_to_live` |
-| Redis key-value cache | `db/redis.go` -- `SetLatestLocation` |
-| Redis pub/sub | `db/redis.go` -- `PublishLocation` / `SubscribeToDriver` |
-| WebSocket upgrade + lifecycle | `producer/ws.go` |
-| Exponential backoff retry | `consumer/main.go` -- `insertWithRetry` |
-| At-least-once delivery | Kafka offset committed after successful Cassandra insert |
-| Multi-stage Docker builds | `producer/Dockerfile`, `consumer/Dockerfile` |
-| Environment-based config | `envOr()` in both services |
+| Concept                                      | Where                                                    |
+| -------------------------------------------- | -------------------------------------------------------- |
+| Kafka producer with message keys             | `producer/main.go`                                       |
+| Kafka consumer groups + partition assignment | `consumer/main.go`                                       |
+| Horizontal consumer scaling                  | `docker-compose up --scale consumer=N`                   |
+| Cassandra time-series schema                 | `schema.cql`                                             |
+| Cassandra partition + clustering keys        | `db/cassandra.go`                                        |
+| TTL-based data expiry                        | `schema.cql` -- `default_time_to_live`                   |
+| Redis key-value cache                        | `db/redis.go` -- `SetLatestLocation`                     |
+| Redis pub/sub                                | `db/redis.go` -- `PublishLocation` / `SubscribeToDriver` |
+| WebSocket upgrade + lifecycle                | `producer/ws.go`                                         |
+| Exponential backoff retry                    | `consumer/main.go` -- `insertWithRetry`                  |
+| At-least-once delivery                       | Kafka offset committed after successful Cassandra insert |
+| Multi-stage Docker builds                    | `producer/Dockerfile`, `consumer/Dockerfile`             |
+| Environment-based config                     | `envOr()` in both services                               |
 
 ---
 
 ## Contributing
+
 Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 ## License
+
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](./LICENSE) file for more information.
