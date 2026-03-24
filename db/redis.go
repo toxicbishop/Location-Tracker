@@ -2,21 +2,32 @@ package db
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/pranav/location-tracker/models"
 	"github.com/redis/go-redis/v9"
 )
 
+
 // NewRedisClient creates and returns a Redis client.
-// Call client.Close() when done.
 func NewRedisClient(addr string) *redis.Client {
-	return redis.NewClient(&redis.Options{
-		Addr: addr, // e.g. "localhost:6379"
+	opts := &redis.Options{
+		Addr: addr,
 		DB:   0,
-	})
+	}
+
+	if os.Getenv("REDIS_TLS_ENABLE") == "true" {
+		opts.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true, // For demo/internal use
+		}
+	}
+
+	return redis.NewClient(opts)
 }
+
 
 // redisKey returns the Redis key for a driver's latest location.
 // Namespaced to avoid collisions if you add other Redis data later.
@@ -25,17 +36,44 @@ func redisKey(driverID string) string {
 }
 
 // SetLatestLocation stores only the most recent GPS event for a driver.
-// This overwrites whatever was there before — we only care about current position.
-// No TTL set here: if a driver goes offline, the last known location stays
-// until they send a new one (useful for "last seen" features).
+// It also updates the Redis Geospatial index for proximity queries.
 func SetLatestLocation(ctx context.Context, rdb *redis.Client, event models.LocationEvent) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal location: %w", err)
 	}
 
-	return rdb.Set(ctx, redisKey(event.DriverID), payload, 0).Err()
+	// 1. Store the JSON for O(1) lookup
+	if err := rdb.Set(ctx, redisKey(event.DriverID), payload, 0).Err(); err != nil {
+		return err
+	}
+
+	// 2. Add to GEO index for proximity searches (GEORADIUS/GEOSEARCH)
+	return rdb.GeoAdd(ctx, "drivers:geo", &redis.GeoLocation{
+		Name:      event.DriverID,
+		Longitude: event.Lng,
+		Latitude:  event.Lat,
+	}).Err()
 }
+
+// GetNearbyDrivers finds drivers within a certain radius (in km) of a location.
+func GetNearbyDrivers(ctx context.Context, rdb *redis.Client, lat, lng, radiusKm float64) ([]string, error) {
+	res, err := rdb.GeoRadius(ctx, "drivers:geo", lng, lat, &redis.GeoRadiusQuery{
+		Radius: radiusKm,
+		Unit:   "km",
+	}).Result()
+
+	if err != nil {
+		return nil, err
+	}
+
+	drivers := make([]string, len(res))
+	for i, loc := range res {
+		drivers[i] = loc.Name
+	}
+	return drivers, nil
+}
+
 
 // GetLatestLocation retrieves the most recent GPS event for a driver from Redis.
 // Returns (nil, nil) if the driver has no cached location yet.
