@@ -1,0 +1,58 @@
+# fly.toml — Fly.io deployment for the Location-Tracker API
+#
+# Prerequisites:
+#   brew install flyctl   (or https://fly.io/docs/hands-on/install-flyctl/)
+#   fly auth login
+#
+# Deploy:
+#   fly launch --no-deploy         # first-time setup (creates app + sets secrets)
+#   fly secrets set JWT_SECRET=<your-secret> API_KEY=<your-key>
+#   fly deploy                     # build + deploy
+#
+# Note: This deploys the API only. Kafka, Cassandra, and Redis are external.
+# For a fully managed demo, pair this with:
+#   - Upstash Redis (free tier, $0/mo)  → set REDIS_ADDR secret
+#   - Confluent Cloud Kafka (free tier)  → set KAFKA_BROKER secret
+#   - DataStax Astra Cassandra (free)    → set CASSANDRA_HOSTS secret
+
+app = "location-tracker-api"
+primary_region = "sin"       # Singapore — closest to India
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+  dockerfile = "api/Dockerfile"
+  build-target = "final"
+
+[env]
+  HTTP_PORT     = "8080"
+  METRICS_PORT  = "9090"
+  LOG_LEVEL     = "info"
+  RATE_LIMIT_RPS = "30"
+  # Set these via `fly secrets set`:
+  # KAFKA_BROKER, REDIS_ADDR, CASSANDRA_HOSTS, JWT_SECRET, API_KEY
+
+[[services]]
+  internal_port = 8080
+  protocol      = "tcp"
+
+  [[services.ports]]
+    port     = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port     = 443
+    handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    interval       = "15s"
+    timeout        = "5s"
+    grace_period   = "30s"
+    method         = "GET"
+    path           = "/health"
+    protocol       = "http"
+
+[resources]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory_mb = 256
