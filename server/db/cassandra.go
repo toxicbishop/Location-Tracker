@@ -25,17 +25,25 @@ func NewSession(host string) (*gocql.Session, error) {
 
 // InsertLocation writes a single GPS event to Cassandra.
 // Cassandra handles TTL automatically (set in schema).
+// The (driver_id, recorded_at, event_id) primary key makes this insert idempotent:
+// retrying with the same event_id is a safe no-op.
 func InsertLocation(session *gocql.Session, e models.LocationEvent) error {
 	driverUUID, err := gocql.ParseUUID(e.DriverID)
 	if err != nil {
 		return fmt.Errorf("invalid driver_id uuid: %w", err)
 	}
 
+	eventUUID, err := gocql.ParseUUID(e.EventID)
+	if err != nil {
+		return fmt.Errorf("invalid event_id uuid: %w", err)
+	}
+
 	return session.Query(`
-		INSERT INTO driver_locations (driver_id, recorded_at, lat, lng, speed)
-		VALUES (?, ?, ?, ?, ?)`,
+		INSERT INTO driver_locations (driver_id, recorded_at, event_id, lat, lng, speed)
+		VALUES (?, ?, ?, ?, ?, ?)`,
 		driverUUID,
 		e.RecordedAt,
+		eventUUID,
 		e.Lat,
 		e.Lng,
 		e.Speed,

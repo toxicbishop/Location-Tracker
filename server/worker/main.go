@@ -13,10 +13,12 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/pranav/location-tracker/db"
 	"github.com/pranav/location-tracker/models"
+	protoenc "github.com/pranav/location-tracker/proto"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -105,11 +107,42 @@ func main() {
 
 func processMessage(ctx context.Context, session *gocql.Session, rdb *redis.Client, dlq *DLQWriter, msg kafka.Message) {
 	var event models.LocationEvent
-	if err := json.Unmarshal(msg.Value, &event); err != nil {
-		dlq.Send(ctx, models.LocationEvent{}, fmt.Sprintf("unmarshal error: %v", err), 0)
-		dlqSent.Inc()
-		log.Error().Err(err).Bytes("message_value", msg.Value).Msg("Failed to unmarshal Kafka message, sent to DLQ")
-		return
+
+	// Dual-codec decode: check the 'encoding' header set by the producer.
+	// Proto messages are ~40% smaller and schema-enforced; JSON is the fallback
+	// for backward compatibility with older producer versions.
+	encoding := "json"
+	for _, h := range msg.Headers {
+		if h.Key == "encoding" {
+			encoding = string(h.Value)
+			break
+		}
+	}
+
+	if encoding == "proto" {
+		var pb protoenc.LocationEvent
+		if err := proto.Unmarshal(msg.Value, &pb); err != nil {
+			dlq.Send(ctx, models.LocationEvent{}, fmt.Sprintf("proto unmarshal error: %v", err), 0)
+			dlqSent.Inc()
+			log.Error().Err(err).Msg("Failed to unmarshal proto Kafka message, sent to DLQ")
+			return
+		}
+		// Convert proto → internal model
+		event = models.LocationEvent{
+			EventID:    pb.GetEventId(),
+			DriverID:   pb.GetDriverId(),
+			Lat:        pb.GetLat(),
+			Lng:        pb.GetLng(),
+			Speed:      pb.GetSpeed(),
+			RecordedAt: time.UnixMilli(pb.GetRecordedAt()).UTC(),
+		}
+	} else {
+		if err := json.Unmarshal(msg.Value, &event); err != nil {
+			dlq.Send(ctx, models.LocationEvent{}, fmt.Sprintf("unmarshal error: %v", err), 0)
+			dlqSent.Inc()
+			log.Error().Err(err).Bytes("message_value", msg.Value).Msg("Failed to unmarshal Kafka message, sent to DLQ")
+			return
+		}
 	}
 
 	start := time.Now()
@@ -138,9 +171,11 @@ func processMessage(ctx context.Context, session *gocql.Session, rdb *redis.Clie
 		log.Warn().Err(err).Str("driver_id", event.DriverID).Msg("redis SET failed (non-fatal)")
 	}
 
-	// Step 3: publish to Redis pub/sub for WebSocket push (best-effort)
-	if err := db.PublishLocation(ctx, rdb, event); err != nil {
-		log.Warn().Err(err).Str("driver_id", event.DriverID).Msg("redis PUBLISH failed (non-fatal)")
+	// Step 3: publish to Redis Stream for WebSocket push (best-effort).
+	// Uses Redis Streams instead of Pub/Sub so WebSocket handlers can replay
+	// missed events on reconnect, fixing the pub/sub fire-and-forget weakness.
+	if err := db.PublishLocationToStream(ctx, rdb, event); err != nil {
+		log.Warn().Err(err).Str("driver_id", event.DriverID).Msg("redis XADD failed (non-fatal)")
 	}
 
 	log.Debug().Str("driver_id", event.DriverID).Float64("lat", event.Lat).Float64("lng", event.Lng).Float32("speed", event.Speed).Msg("Saved location event")

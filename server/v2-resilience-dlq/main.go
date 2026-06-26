@@ -88,9 +88,9 @@ func main() {
 			log.Printf("redis SET failed for driver %s (non-fatal): %v", event.DriverID, err)
 		}
 
-		// Step 3: publish to Redis pub/sub for WebSocket push (best-effort)
-		if err := db.PublishLocation(ctx, rdb, event); err != nil {
-			log.Printf("redis PUBLISH failed for driver %s (non-fatal): %v", event.DriverID, err)
+		// Step 3: publish to Redis Stream for WebSocket push (best-effort)
+		if err := db.PublishLocationToStream(ctx, rdb, event); err != nil {
+			log.Printf("redis XADD failed for driver %s (non-fatal): %v", event.DriverID, err)
 		}
 
 		log.Printf("Saved: driver=%s lat=%.4f lng=%.4f speed=%.1f",

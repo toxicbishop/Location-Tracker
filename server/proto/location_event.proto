@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package locationtracker;
+
+option go_package = "github.com/pranav/location-tracker/proto";
+
+// LocationEvent is the schema for GPS events flowing through the Kafka topic.
+//
+// Using Protobuf instead of raw JSON gives us:
+//   - Schema enforcement: producer and consumer can't silently diverge
+//   - ~40% smaller payloads vs JSON (no field name repetition)
+//   - Versioning: new fields are backward-compatible with older consumers
+//   - A schema registry story: this .proto file IS the contract
+//
+// The event_id field doubles as the Cassandra idempotency key (improvement #5).
+// recorded_at is Unix milliseconds to avoid timestamp parsing overhead.
+message LocationEvent {
+  string driver_id   = 1;  // UUID string — Kafka partition key
+  double lat         = 2;  // WGS-84 latitude  (-90..90)
+  double lng         = 3;  // WGS-84 longitude (-180..180)
+  float  speed       = 4;  // km/h
+  int64  recorded_at = 5;  // Unix milliseconds UTC
+  string event_id    = 6;  // UUID — idempotency key for Cassandra
+}

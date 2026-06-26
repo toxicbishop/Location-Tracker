@@ -12,13 +12,16 @@ import (
 	"time"
 
 	"github.com/gocql/gocql"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	protoenc "github.com/pranav/location-tracker/proto"
 	"github.com/pranav/location-tracker/db"
 	"github.com/pranav/location-tracker/models"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/segmentio/kafka-go"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -36,6 +39,10 @@ func main() {
 	redisAddr := envOr("REDIS_ADDR", "localhost:6379")
 	listenAddr := ":" + envOr("HTTP_PORT", "8080")
 	metricsAddr := ":" + envOr("METRICS_PORT", "9090")
+	rateLimitRPS, _ := strconv.Atoi(envOr("RATE_LIMIT_RPS", "30"))
+	if rateLimitRPS <= 0 {
+		rateLimitRPS = 30
+	}
 
 	// 2. Initialize Kafka Writer
 	writer = &kafka.Writer{
@@ -65,8 +72,9 @@ func main() {
 
 	// 6. Define Routes
 	mux := http.NewServeMux()
-	mux.HandleFunc("/location", metricsMiddleware("/location", AuthMiddleware(handleLocation)))
-	mux.HandleFunc("/location/batch", metricsMiddleware("/location/batch", AuthMiddleware(handleLocationBatch)))
+	rl := RateLimitMiddleware(rdb, rateLimitRPS)
+	mux.HandleFunc("/location", metricsMiddleware("/location", AuthMiddleware(rl(handleLocation))))
+	mux.HandleFunc("/location/batch", metricsMiddleware("/location/batch", AuthMiddleware(rl(handleLocationBatch))))
 	mux.HandleFunc("/driver/", metricsMiddleware("/driver", handleGetLatestLocation))
 	mux.HandleFunc("/driver/history/", metricsMiddleware("/history", handleGetDriverHistory(session)))
 	mux.HandleFunc("/drivers/nearby", metricsMiddleware("/nearby", handleGetNearbyDrivers))
@@ -142,11 +150,45 @@ func handleLocation(w http.ResponseWriter, r *http.Request) {
 	if event.RecordedAt.IsZero() {
 		event.RecordedAt = time.Now().UTC()
 	}
+	// Auto-generate idempotency key if the client didn't supply one.
+	// On retry, clients should send the same event_id to get a safe no-op Cassandra insert.
+	if event.EventID == "" {
+		event.EventID = uuid.New().String()
+	}
 
-	payload, _ := json.Marshal(event)
+	// Encode the Kafka message.
+	// Clients sending Content-Type: application/x-protobuf get proto encoding;
+	// all others (and older clients) get JSON. The header tells the consumer
+	// which codec to use — no separate schema registry needed for this demo.
+	var payload []byte
+	var headers []kafka.Header
+	var encErr error
+
+	if r.Header.Get("Content-Type") == "application/x-protobuf" {
+		pb := &protoenc.LocationEvent{
+			DriverId:   event.DriverID,
+			EventId:    event.EventID,
+			Lat:        event.Lat,
+			Lng:        event.Lng,
+			Speed:      event.Speed,
+			RecordedAt: event.RecordedAt.UnixMilli(),
+		}
+		payload, encErr = proto.Marshal(pb)
+		headers = []kafka.Header{{Key: "encoding", Value: []byte("proto")}}
+	} else {
+		payload, encErr = json.Marshal(event)
+		headers = []kafka.Header{{Key: "encoding", Value: []byte("json")}}
+	}
+	if encErr != nil {
+		log.Error().Err(encErr).Msg("encode error")
+		http.Error(w, "encode error", http.StatusInternalServerError)
+		return
+	}
+
 	err := writer.WriteMessages(r.Context(), kafka.Message{
-		Key:   []byte(event.DriverID),
-		Value: payload,
+		Key:     []byte(event.DriverID),
+		Value:   payload,
+		Headers: headers,
 	})
 
 	if err != nil {
@@ -177,6 +219,9 @@ func handleLocationBatch(w http.ResponseWriter, r *http.Request) {
 		}
 		if e.RecordedAt.IsZero() {
 			e.RecordedAt = time.Now().UTC()
+		}
+		if e.EventID == "" {
+			e.EventID = uuid.New().String()
 		}
 		payload, _ := json.Marshal(e)
 		messages = append(messages, kafka.Message{
