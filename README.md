@@ -264,6 +264,18 @@ connect. The rider sees the driver's position right away without waiting for the
 
 ---
 
+## Frontend Dashboard
+
+This project includes a Next.js frontend located at the root of the repository.
+
+`bash
+# Run the frontend development server
+pnpm install
+pnpm dev
+`
+Open [http://localhost:3000](http://localhost:3000) to view the live tracking dashboard.
+
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
@@ -273,14 +285,3 @@ Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for d
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](./LICENSE) file for more information.
 
 ---
-
-## Frontend Dashboard
-
-This project includes a Next.js frontend located at the root of the repository.
-
-`ash
-# Run the frontend development server
-pnpm install
-pnpm dev
-`
-Open [http://localhost:3000](http://localhost:3000) to view the live tracking dashboard.
