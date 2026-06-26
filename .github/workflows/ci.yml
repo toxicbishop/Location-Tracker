@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  # ── Job 1: Test ─────────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Download dependencies
+        working-directory: ./server
+        run: go mod download
+
+      - name: Run tests
+        working-directory: ./server
+        run: go test -v -race -count=1 ./...
+
+      - name: Vet
+        working-directory: ./server
+        run: go vet ./...
+
+  # ── Job 2: Build ─────────────────────────────────────────────────────────────
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Build API (producer)
+        working-directory: ./server
+        run: go build -o bin/producer ./api
+
+      - name: Build Worker (consumer)
+        working-directory: ./server
+        run: go build -o bin/consumer ./worker
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: server/bin/
+
+  # ── Job 3: Docker Build ───────────────────────────────────────────────────────
+  docker:
+    name: Docker Image Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/api/Dockerfile
+          push: false
+          tags: location-tracker-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/worker/Dockerfile
+          push: false
+          tags: location-tracker-worker:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 4: Smoke Test ─────────────────────────────────────────────────────────
+  smoke:
+    name: Smoke Test (docker-compose)
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start infrastructure + apps
+        working-directory: ./server
+        run: docker compose up -d --build
+
+      - name: Wait for API to be healthy
+        working-directory: ./server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health; then
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 5
+          done
+          echo "API never became healthy"
+          docker compose logs api
+          exit 1
+
+      - name: Run Cassandra migrations
+        working-directory: ./server
+        run: |
+          # Give Cassandra extra time — it's the slowest to start
+          sleep 30
+          docker compose exec -T cassandra cqlsh -f /dev/stdin < migrations.cql || true
+
+      - name: Smoke: POST /location (JSON)
+        run: |
+          curl -sf -X POST http://localhost:8080/location \
+            -H "Content-Type: application/json" \
+            -H "X-API-KEY: default-api-key" \
+            -H "X-Driver-ID: 550e8400-e29b-41d4-a716-446655440001" \
+            -d '{
+              "driver_id": "550e8400-e29b-41d4-a716-446655440001",
+              "lat": 12.9716,
+              "lng": 77.5946,
+              "speed": 45.5
+            }'
+
+      - name: Smoke: GET /health
+        run: curl -sf http://localhost:8080/health
+
+      - name: Smoke: GET /drivers/nearby
+        run: curl -sf "http://localhost:8080/drivers/nearby?lat=12.97&lng=77.59&radius=5"
+
+      - name: Dump logs on failure
+        if: failure()
+        working-directory: ./server
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        working-directory: ./server
+        run: docker compose down -v
