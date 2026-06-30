@@ -20,6 +20,7 @@ jobs:
         with:
           go-version: "1.23"
           cache: true
+          cache-dependency-path: server/go.sum
 
       - name: Download dependencies
         working-directory: ./server
@@ -47,6 +48,7 @@ jobs:
         with:
           go-version: "1.23"
           cache: true
+          cache-dependency-path: server/go.sum
 
       - name: Build API (producer)
         working-directory: ./server
@@ -105,7 +107,9 @@ jobs:
 
       - name: Start infrastructure + apps
         working-directory: ./server
-        run: docker compose up -d --build
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
 
       - name: Wait for API to be healthy
         working-directory: ./server
