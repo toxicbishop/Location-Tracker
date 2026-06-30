@@ -9,8 +9,8 @@ WORKDIR /app
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* pnpm-lock.yaml* ./
 RUN \
-  if [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
+  if [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile --ignore-scripts; \
+  elif [ -f package-lock.json ]; then npm ci --ignore-scripts; \
   else echo "Lockfile not found." && exit 1; \
   fi
 
