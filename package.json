@@ -1,6 +1,13 @@
 {
   "name": "@toxicbishop/frontend",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toxicbishop/Location-Tracker.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
