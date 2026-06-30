@@ -147,7 +147,14 @@ jobs:
           docker compose logs api cassandra kafka
           exit 1
 
-      - name: Smoke: POST /location (JSON)
+      - name: Run Cassandra migrations
+        working-directory: ./server
+        run: |
+          # Give Cassandra extra time — it's the slowest to start
+          sleep 30
+          docker compose exec -T cassandra cqlsh -f /dev/stdin < migrations.cql || true
+
+      - name: "Smoke: POST /location (JSON)"
         run: |
           curl -sf -X POST http://localhost:8080/location \
             -H "Content-Type: application/json" \
@@ -160,10 +167,10 @@ jobs:
               "speed": 45.5
             }'
 
-      - name: Smoke: GET /health
+      - name: "Smoke: GET /health"
         run: curl -sf http://localhost:8080/health
 
-      - name: Smoke: GET /drivers/nearby
+      - name: "Smoke: GET /drivers/nearby"
         run: curl -sf "http://localhost:8080/drivers/nearby?lat=12.97&lng=77.59&radius=5"
 
       - name: Dump logs on failure
