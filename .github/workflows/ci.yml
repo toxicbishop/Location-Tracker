@@ -113,6 +113,20 @@ jobs:
           docker compose ps
           docker compose logs zookeeper kafka
 
+      - name: Run Cassandra migrations
+        working-directory: ./server
+        run: |
+          # Wait for Cassandra to be healthy before running migrations
+          for i in $(seq 1 30); do
+            if docker compose exec -T cassandra cqlsh -e 'describe keyspaces' 2>/dev/null; then
+              echo "Cassandra is ready"
+              break
+            fi
+            echo "Waiting for Cassandra... ($i/30)"
+            sleep 5
+          done
+          docker compose exec -T cassandra cqlsh -f /dev/stdin < migrations.cql || true
+
       - name: Wait for API + dependencies to be ready
         working-directory: ./server
         run: |
@@ -120,7 +134,7 @@ jobs:
             if curl -sf http://localhost:8080/health >/dev/null && \
                curl -sf -X POST http://localhost:8080/location \
                  -H "Content-Type: application/json" \
-                 -H "X-API-KEY: default-api-key" \
+                 -H "X-API-KEY: test-api-key" \
                  -H "X-Driver-ID: 550e8400-e29b-41d4-a716-446655440001" \
                  -d '{"driver_id":"550e8400-e29b-41d4-a716-446655440001","lat":12.9716,"lng":77.5946,"speed":45.5}' >/dev/null; then
               echo "API is fully ready"
@@ -130,21 +144,14 @@ jobs:
             sleep 5
           done
           echo "API never became fully ready"
-          docker compose logs api cassandra
+          docker compose logs api cassandra kafka
           exit 1
-
-      - name: Run Cassandra migrations
-        working-directory: ./server
-        run: |
-          # Give Cassandra extra time — it's the slowest to start
-          sleep 30
-          docker compose exec -T cassandra cqlsh -f /dev/stdin < migrations.cql || true
 
       - name: Smoke: POST /location (JSON)
         run: |
           curl -sf -X POST http://localhost:8080/location \
             -H "Content-Type: application/json" \
-            -H "X-API-KEY: default-api-key" \
+            -H "X-API-KEY: test-api-key" \
             -H "X-Driver-ID: 550e8400-e29b-41d4-a716-446655440001" \
             -d '{
               "driver_id": "550e8400-e29b-41d4-a716-446655440001",
