@@ -127,6 +127,11 @@ jobs:
           done
           docker compose exec -T cassandra cqlsh -f /dev/stdin < migrations.cql || true
 
+      - name: Create Kafka Topic
+        working-directory: ./server
+        run: |
+          docker compose exec -T kafka kafka-topics --create --if-not-exists --bootstrap-server localhost:29092 --partitions 1 --replication-factor 1 --topic gps.updates
+
       - name: Wait for API + dependencies to be ready
         working-directory: ./server
         run: |
@@ -147,12 +152,6 @@ jobs:
           docker compose logs api cassandra kafka
           exit 1
 
-      - name: Run Cassandra migrations
-        working-directory: ./server
-        run: |
-          # Give Cassandra extra time — it's the slowest to start
-          sleep 30
-          docker compose exec -T cassandra cqlsh -f /dev/stdin < migrations.cql || true
 
       - name: "Smoke: POST /location (JSON)"
         run: |
