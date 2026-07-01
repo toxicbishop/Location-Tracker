@@ -1,5 +1,5 @@
 {
-  "name": "@toxicbishop/frontend",
+  "name": "@toxicbishop/location-tracker",
   "version": "0.1.0",
   "repository": {
     "type": "git",
@@ -54,5 +54,11 @@
   },
   "resolutions": {
     "postcss": "^8.5.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }

@@ -1,23 +1,58 @@
-name: Publish Package to GitHub Packages
+name: Publish Docker Images to GHCR
 
 on:
   release:
     types: [created]
   workflow_dispatch:
 
+env:
+  REGISTRY: ghcr.io
+  # Change this if the repository name contains uppercase letters
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  publish-gpr:
+  build-and-push-images:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: ./server/api/Dockerfile
+            image: location-tracker-api
+            context: ./server
+          - dockerfile: ./server/worker/Dockerfile
+            image: location-tracker-worker
+            context: ./server
+          - dockerfile: ./Dockerfile
+            image: location-tracker-frontend
+            context: .
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
         with:
-          node-version: '20.x'
-          registry-url: 'https://npm.pkg.github.com/'
-      - run: npm ci
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
