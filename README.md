@@ -1,4 +1,4 @@
-﻿# Location-Tracker
+# Location-Tracker
 
 ![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-black?logo=next.js&logoColor=white)
@@ -27,7 +27,7 @@ Tracks live driver positions for a ride-sharing application.
 
 ## Architecture
 
-![Architecture Diagram](assets/architecture.svg)
+![Architecture Diagram](assets/Location-tracker-System-architecture.png)
 
 The system architecture is designed for high availability and low latency. You can view and edit the high-fidelity diagram using the **draw.io** extension by opening [assets/architecture.drawio](assets/architecture.drawio).
 
