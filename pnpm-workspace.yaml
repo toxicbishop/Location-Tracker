@@ -1,18 +1,13 @@
 minimumReleaseAgeExclude:
   - shadcn@4.11.1
-
 packages:
   - "."
-
 overrides:
   postcss: "^8.5.10"
   brace-expansion: ">=5.0.7"
   "@hono/node-server": ">=2.0.5"
-
+  js-yaml: ">=4.2.0"
+  fast-uri: ">=4.1.1"
 onlyBuiltDependencies:
   - sharp
   - unrs-resolver
-
-allowBuilds:
-  sharp: false
-  unrs-resolver: false
