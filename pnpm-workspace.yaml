@@ -9,6 +9,11 @@ overrides:
   js-yaml: ">=4.2.0"
   fast-uri: ">=4.1.1"
   sharp: ">=0.35.0"
+  ip-address: ">=9.0.5"
+  undici: ">=5.28.4"
+  hono: ">=4.3.2"
 onlyBuiltDependencies:
   - sharp
   - unrs-resolver
+allowBuilds:
+  unrs-resolver: false
