@@ -12,6 +12,7 @@ overrides:
   ip-address: ">=9.0.5"
   undici: ">=5.28.4"
   hono: ">=4.3.2"
+  nanoid: ">=3.3.18"
 onlyBuiltDependencies:
   - sharp
   - unrs-resolver
