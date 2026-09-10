@@ -24,7 +24,7 @@
     "leaflet.fullscreen": "^5.3.1",
     "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^1.21.0",
-    "maplibre-gl": "^5.24.0",
+    "maplibre-gl": "^6.4.1",
     "next": "16.2.11",
     "next-themes": "^0.4.6",
     "react": "19.2.4",
